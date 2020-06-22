@@ -9,30 +9,29 @@
 #include <sys/types.h>
 #include <sys/time.h>
 
-#define page_len 4096
+#define PAGE_SIZE 4096
 #define BUF_SIZE 512
-size_t get_filesize(const char* filename);
+size_t get_filesize(const char* filename);//get the size of the input file
 
 
 int main (int argc, char* argv[])
 {
     char buf[BUF_SIZE];
-    int i, dev_fd, file_fd;
+    int i, dev_fd, file_fd;// the fd for the device and the fd for the input file
     size_t ret, file_size, offset = 0, tmp;
     char file_name[50], method[20];
     char *kernel_address = NULL, *file_address = NULL;
     struct timeval start;
     struct timeval end;
-    double trans_time; 
+    double trans_time; //calulate the time between the device is opened and it is closed
 
 
     strcpy(file_name, argv[1]);
     strcpy(method, argv[2]);
 
+
     dev_fd = open("/dev/master_device", O_RDWR);
-    
     gettimeofday(&start ,NULL);
-    
     file_fd = open (file_name, O_RDWR);
 
     file_size = get_filesize(file_name);
@@ -40,50 +39,41 @@ int main (int argc, char* argv[])
 
     ioctl(dev_fd, 0x12345677);
 
-      char *f_address, *k_address;
+    char *src, *dst;
     
     
     switch(method[0]) 
     {
-        case 'f': 
+        case 'f': //fcntl : read()/write()
             do
             {
-                ret = read(file_fd, buf, sizeof(buf));
-                write(dev_fd, buf, ret);
+                ret = read(file_fd, buf, sizeof(buf)); // read from the input file
+                write(dev_fd, buf, ret);//write to the the device
             }while(ret > 0);
             break;
-        case 'm': 
+        case 'm': //mmap
             while (offset < file_size) {
-                f_address = mmap(NULL, page_len, PROT_READ, MAP_SHARED, file_fd, offset);
-   
-                k_address = mmap(NULL, page_len, PROT_WRITE, MAP_SHARED, dev_fd, offset);
-                
-                    int len =0;
-                    if(offset + BUF_SIZE > file_size)
-                        len = file_size % BUF_SIZE;
-                    else
-                        len = BUF_SIZE;
-                    memcpy(k_address, f_address, len);
+                if((src = mmap(NULL, PAGE_SIZE, PROT_READ, MAP_SHARED, file_fd, offset)) == (void *) -1) {
+                    perror("mapping input file");
+                    return 1;
+                }
+                if((dst = mmap(NULL, PAGE_SIZE, PROT_WRITE, MAP_SHARED, dev_fd, offset)) == (void *) -1) {
+                    perror("mapping output device");
+                    return 1;
+                }
+                do {
+                    int len = (offset + BUF_SIZE > file_size ? file_size % BUF_SIZE : BUF_SIZE);
+                    memcpy(dst, src, len);
                     offset += len;
                     ioctl(dev_fd, 0x12345678, len);
-                 while (offset < file_size && offset % page_len != 0){
-		    len =0;
-                    if(offset + BUF_SIZE > file_size)
-                        len = file_size % BUF_SIZE;
-                    else
-                        len = BUF_SIZE;
-                    memcpy(k_address, f_address, len);
-                    offset += len;
-                    ioctl(dev_fd, 0x12345678, len);
-                
-                    ioctl(dev_fd, 0x12345676, (unsigned long)f_address);
-                    munmap(f_address, page_len);
-		}
+                } while (offset < file_size && offset % PAGE_SIZE != 0);
+                ioctl(dev_fd, 0x12345676, (unsigned long)src);
+                munmap(src, PAGE_SIZE);
             }
             break;
     }
 
-    if(ioctl(dev_fd, 0x12345679) == -1) 
+    if(ioctl(dev_fd, 0x12345679) == -1) // end sending data, close the connection
     {
     	perror("ioclt server exits error\n");
     	return 1;
