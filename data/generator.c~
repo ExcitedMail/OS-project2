@@ -1,0 +1,17 @@
+#include<stdio.h>
+#include<stdlib.h>
+#include<time.h>
+
+int main(){
+	int wid = 10;
+	srand(time(NULL));
+	wid = rand()%100+10;
+	for(int i = 0; i < 5; i++){
+		for(int j = 0; j < 1; j++){
+			printf("%c", (char)(rand()%26+65));
+		}
+		printf("\n");
+	}
+	
+	return 0;
+}
